@@ -48,7 +48,7 @@ class Block:
     sha.update(
       str(self.timestamp).encode('utf-8') +
       str(self.transactions).encode('utf-8') + # to be replaced by merkle root 
-      str(self.merkletree).encode('utf-8') +
+      str(self.merkletree[0][0] if len(self.merkletree) > 0 else "").encode('utf-8') +
       str(self.nonce).encode('utf-8') +
       str(self.previous_hash).encode('utf-8')
     )
@@ -132,7 +132,8 @@ class Miner:
     self.blockchain.currentblock
   
   def validateBlock(self, block, hashDifficult):
-    return int(block.hashBlock(),16) < hashDifficult and self.blockchain.lastBlock().hash == block.previous_hash
+    bhash = int(block.hashBlock(),16) 
+    return bhash < hashDifficult and self.blockchain.lastBlock().hash == block.previous_hash
 
   def commitBlock(self, block):
     self.blockchain.commitBlock(block)
@@ -164,9 +165,10 @@ class Simulation:
   def broadcastMinedBlock(self, block):
     for miner in self.uniqueMiners:
       if miner.validateBlock(block, self.difficulty_hash):
+        print("  Miner <{}> says the block is valid".format(miner.name))
         miner.commitBlock(block)
       else:
-        print("miner {} was not able to validate the block".format(miner.name))
+        print("  Miner <{}> was not able to validate the block".format(miner.name))
   
   def log(self):
     # invoke logging of chain for all miners
@@ -199,6 +201,7 @@ class Simulation:
     # now from this on all the transactions are added systematically
     for transaction in self.sumulatedTransactions:
       verdict = True
+      print("\nTransaction received {}".format(str(transaction)))
       for miner in self.uniqueMiners:
        verdict &= miner.addTransaction(copy.deepcopy(transaction))
       
@@ -209,6 +212,7 @@ class Simulation:
       # else means the transaction was added then we now can run mine race between the miners
       nonce = 0 
       success = False
+      print("Miners now competing to mine current block".format(index))
       while success == False:
         for miner in self.miners:
           success, currblock = miner.tryNextMining(index, nonce, self.difficulty_hash)
@@ -218,10 +222,11 @@ class Simulation:
 
           # if we are here means that the mining was successful, 
           # let all the miners check if they think this is valid one
-          print("Transaction = {} Miner <{}> mined the block, nonce = {}".format(str(transaction), miner.name, nonce))
+          print("Miner <{}> successfully mined the block, nonce = {}".format(miner.name, nonce))
 
           # send updates to all the miners
           self.broadcastMinedBlock(currblock)
+          print("Miner <{}> added the block to the blockchain and sent it to all other miners".format(miner.name))
           break
 
 
@@ -241,6 +246,9 @@ simulatedTransactions = [
   {'from': 'alice', 'to': 'bob', 'amount': 10},
   {'from': 'alice', 'to': 'charlie', 'amount': 50},
   {'from': 'bob', 'to': 'charlie', 'amount': 30},
+  {'from': 'charlie', 'to': 'bob', 'amount': 76},
+  {'from': 'bob', 'to': 'alice', 'amount': 20},
+  {'from': 'charlie', 'to': 'alice', 'amount': 30},
 ]
 
 simulation = Simulation(miners=[miner1, miner2, miner3], predefinedTransactions=predefinedTransactions, simulatedTransactions = simulatedTransactions)
