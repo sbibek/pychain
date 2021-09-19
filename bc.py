@@ -3,11 +3,42 @@ import datetime as date
 import random
 import copy
 
+class MerkleTree:
+  def getTree(self, transactions):
+    if len(transactions) % 2 != 0:
+      transactions.append({})
+
+    tree = []
+    
+    leaves = []
+    for t in transactions:
+      leaves.append(self.__getHash(t))  
+    tree.append(leaves)
+
+    self.__genTree(transactions, tree)
+    return list(reversed(tree))
+
+  def __genTree(self, transactions, result):
+    tns = []
+    for i in range(0, len(transactions), 2):
+      tns.append(self.__getHash(str(transactions[i])+str(transactions[i+1])))
+    
+    result.append(tns)
+    if len(tns) > 1:
+      self.__genTree(tns, result)
+
+
+  def __getHash(self, transaction):
+    sha = hasher.sha256()
+    sha.update(str(transaction).encode('utf-8'))
+    return sha.hexdigest()
+
 class Block:
   def __init__(self, index, timestamp, transactions, previous_hash, nonce):
     self.index = index
     self.timestamp = timestamp
     self.transactions = transactions
+    self.merkletree = []
     self.nonce = nonce
     self.previous_hash = previous_hash
     self.hash = self.hashBlock()
@@ -17,6 +48,7 @@ class Block:
     sha.update(
       str(self.timestamp).encode('utf-8') +
       str(self.transactions).encode('utf-8') + # to be replaced by merkle root 
+      str(self.merkletree).encode('utf-8') +
       str(self.nonce).encode('utf-8') +
       str(self.previous_hash).encode('utf-8')
     )
@@ -27,11 +59,13 @@ class Blockchain:
   def __init__(self):
     self.blocks = []
     self.currentblock = Block(0, date.datetime.now(),[], "0", 0) 
+    self.merklefn = MerkleTree()
 
   def addTransactions(self, transaction):
     verdict = self.validateTransaction(transaction)
     if verdict:
       self.currentblock.transactions.append(transaction)
+      self.currentblock.merkletree = self.merklefn.getTree(copy.deepcopy(self.currentblock.transactions))
     return verdict
 
   def validateTransaction(self, transaction):
@@ -56,7 +90,7 @@ class Blockchain:
     return self.blocks[-1]
 
   def commitBlock(self, block):
-    blk = Block(block.index, block.timestamp, block.transactions, block.previous_hash, block.nonce)
+    blk = copy.deepcopy(block) 
     blk.hash = block.hash
     self.blocks.append(blk)
     self.currentblock = Block(0, date.datetime.now(),[], "0", 0) 
@@ -73,7 +107,9 @@ class Miner:
     i = 0
     for block in self.blockchain.blocks:
       print(" <{}> nonce: {} transactions: {}".format(i, block.nonce, str(block.transactions)))
+      print(" <{}> root of merkle tree : {}".format(i, str(block.merkletree[0][0]) if len(block.merkletree) > 0 else ""))
       print(" <{}> prev_hash: {} hash: {}".format(i, block.previous_hash, block.hash))
+      print()
       i += 1
 
   def addTransaction(self, transaction):
@@ -83,7 +119,6 @@ class Miner:
     # lets update the previous hash and index
     self.blockchain.currentblock.index = index
     self.blockchain.currentblock.previous_hash = self.blockchain.lastBlock().hash
-
     block = self.blockchain.currentblock
     block.nonce = currentNonce
     m = block.hashBlock()
@@ -141,13 +176,16 @@ class Simulation:
 
   def simulate(self):
     index = 0
-    genesisBlock = Block(index, date.datetime.now(),{}, "0", 0)
+    genesisBlock = Block(index, date.datetime.now(),{"Genesis": "Block"}, "0", 0)
     previoushash = genesisBlock.hashBlock()
     predefinedblocks = []
     predefinedblocks.append(genesisBlock)
     # for the first predefined conditions, we just run PoW and set them to all the miners
+
+    mtree = MerkleTree()
     for t in self.predefinedTransactions:
       block = Block(index+1, date.datetime.now(),[t], previoushash,0)
+      block.merkletree = mtree.getTree(copy.deepcopy([t])) 
       previoushash = self.mineBlock(block)
       predefinedblocks.append(block)
     
